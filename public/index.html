@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.anthropic.com https://api.openai.com https://api.elevenlabs.io; img-src 'self' data: blob:; media-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' data: http://localhost:* http://127.0.0.1:* https://unpkg.com https://api.anthropic.com https://api.openai.com https://api.elevenlabs.io https://api.languagetool.org https://api.dictionaryapi.dev https://cdn.jsdelivr.net https://huggingface.co https://*.huggingface.co https://*.hf.co; img-src 'self' data: blob:; media-src 'self' blob: data: https://api.dictionaryapi.dev https://ssl.gstatic.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net; worker-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'">
 <meta name="description" content="Voca — practise speaking English out loud with an AI coach. Grammar, pronunciation and fluency feedback, characters and daily streaks.">
 <meta property="og:title" content="Voca — Speak English Out Loud"><meta property="og:description" content="Talk out loud, get instant feedback, keep your streak.">
 <link rel="icon" href="icon.svg"><link rel="icon" type="image/png" sizes="192x192" href="icon-192.png"><link rel="apple-touch-icon" href="icon-180.png">
@@ -110,12 +110,14 @@
     </div>
     <div class="drill-target" id="drillTarget">—</div>
     <div class="drill-tip" id="drillTip"></div>
+    <div id="wordtrain"></div>
     <div class="drill-actions">
       <button class="ghost" id="drillListen">🔊 Listen</button>
       <button class="primary" id="drillSpeak">🎤 Say it</button>
       <button class="ghost" id="drillNext">Next ➜</button>
     </div>
     <div class="drill-result" id="drillResult"></div>
+    <div id="find10"></div>
   </div>
 </section>
 
@@ -139,6 +141,7 @@
   <div class="card"><h3>Last 28 days</h3><div class="heat" id="heat"></div><small class="muted">Green = daily goal reached · Blue = streak freeze used</small></div>
   <div class="two">
     <div class="card"><h3>Mistake notebook <small class="muted">— your most repeated</small></h3><div id="notebook" class="nb"></div><button class="ghost" id="drillMine">🎯 Drill my mistakes</button></div>
+    <div class="card" id="learnbox"><h3>🧠 What Voca has learned about you</h3><small class="muted">Loading…</small></div>
     <div class="card"><h3>Settings</h3>
       <label>Daily goal (minutes of practice)<input type="number" id="setGoal" min="1" max="240"></label>
       <label>Daily reminder time <input type="time" id="setRemind"></label>
@@ -148,7 +151,12 @@
         <select id="setLang"><option value="en-US">American (en-US) — strictest</option><option value="en-GB">British (en-GB)</option><option value="en-IN">Indian (en-IN) — most forgiving</option><option value="en-AU">Australian (en-AU)</option></select></label>
       <label>Ava's voice <select id="setVoice"></select></label>
       <label>Realistic character voices <small class="muted">(optional, needs a voice-service key)</small>
-        <select id="setTts"><option value="">Browser voices (free)</option><option value="elevenlabs">ElevenLabs — most realistic</option><option value="openai">OpenAI voices</option></select></label>
+        <select id="setTts"><option value="">Browser voices (free)</option><option value="elevenlabs">ElevenLabs — most realistic</option><option value="openai">OpenAI voices</option><option value="voicestudio">VoiceStudio — free, runs on your computer</option></select></label>
+      <label class="chk"><input type="checkbox" id="setLT"> Grammar check with LanguageTool (online)<small class="muted">Sends the text of your sentence (never audio) to api.languagetool.org. No key needed.</small></label>
+      <label class="chk"><input type="checkbox" id="setDict"> Dictionary &amp; native pronunciation (online)<small class="muted">Looks up single words at api.dictionaryapi.dev.</small></label>
+      <label class="chk"><input type="checkbox" id="setNeural"> Neural grammar model in my browser<small class="muted">One-time download of roughly 100–250 MB from huggingface.co, then cached. Best on Wi-Fi.</small></label>
+      <div class="row" id="neuralRow"><small class="muted" id="neuralStatus">Off</small></div>
+      <label id="vsRow" hidden>VoiceStudio address <input type="text" id="setTtsUrl" placeholder="http://localhost:3900" autocomplete="off"><small class="muted">Start VoiceStudio first. Key below is optional for it.</small></label>
       <label>Voice service API key <input type="password" id="setTtsKey" placeholder="paste ElevenLabs / OpenAI key"></label>
       <div class="row" style="margin-top:0"><button class="ghost" type="button" id="ttsTest">🔊 Test this character's voice</button></div>
       <label class="chk"><input type="checkbox" id="setSound"> Sound effects &amp; celebrations</label>
@@ -164,6 +172,9 @@
 <div class="welcome" id="welcome" hidden></div>
 <div class="modal" id="modal" hidden><div class="modal-card card" id="modalBody"></div></div>
 <script src="lib/analyzer.js"></script>
+<script src="lib/drilldata.js"></script>
+<script src="lib/learner.js"></script>
+<script src="lib/online.js"></script>
 <script src="lib/characters.js"></script>
 <script src="lib/persona.js"></script>
 <script src="static-api.js"></script>

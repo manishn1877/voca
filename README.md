@@ -110,3 +110,15 @@ Upload the CONTENTS of `public/` to a **public** repo → Settings → Pages →
 - **Test AI connection** gives plain-English errors (bad key, no credit, blocked network).
 - Opening inside Instagram/Facebook browsers shows a warning (mic is blocked there). PNG icons, install button, iOS audio unlock included.
 When you get your own server, run `node server.js`; the same files work unchanged.
+
+
+## Free local voices with VoiceStudio (optional)
+1. Install and start VoiceStudio (https://github.com/debpalash/VoiceStudio) on your computer; it serves on http://localhost:3900.
+2. If the voices don't play from the website, run `python3 tools/voicestudio-bridge.py` (adds the CORS headers browsers need) and use http://localhost:3901.
+3. In Voca: Progress → Settings → Voice → "VoiceStudio — free, runs on your computer", then "Test this character's voice".
+Works only on the computer running VoiceStudio (not on a phone).
+
+## Online helpers (no backend, no keys — work on GitHub Pages)
+Settings → Online helpers: LanguageTool grammar (api.languagetool.org), Free Dictionary meanings + native audio
+(api.dictionaryapi.dev), and an optional in-browser neural grammar model (Transformers.js + Xenova/t5-base-grammar-correction,
+downloaded once from huggingface.co and cached). All fail silently and fall back to the built-in rules. See `public/lib/online.js`.

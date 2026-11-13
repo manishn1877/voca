@@ -26,7 +26,9 @@ let lastAiError = null;
 const apiKey = () => process.env.ANTHROPIC_API_KEY || conf.apiKey || '';
 const ttsProvider = () => conf.ttsProvider || '';
 const ttsKey = () => process.env.ELEVENLABS_API_KEY && ttsProvider() === 'elevenlabs' ? process.env.ELEVENLABS_API_KEY : process.env.OPENAI_API_KEY && ttsProvider() === 'openai' ? process.env.OPENAI_API_KEY : conf.ttsKey || '';
-const ttsOn = () => !!(ttsProvider() && ttsKey());
+const ttsUrl = () => String(conf.ttsUrl || 'http://localhost:3900').replace(/\/+$/, '');
+const ttsOn = () => ttsProvider() === 'voicestudio' || !!(ttsProvider() && ttsKey());
+const ttsType = () => (ttsProvider() === 'voicestudio' ? 'audio/wav' : 'audio/mpeg');
 const model = () => process.env.ANTHROPIC_MODEL || conf.model || 'claude-sonnet-5-5';
 
 /* ---------------- AI ---------------- */
@@ -164,6 +166,7 @@ function voicePick(tbl, ch) {
   const h = [...String(ch.id || '') + String(ch.name || '')].reduce((a, c) => a + c.charCodeAt(0), 0);
   return tbl[g][h % tbl[g].length];
 }
+let elvCache = null;
 async function synthesize(text, ch) {
   const prov = ttsProvider(), key = ttsKey();
   text = String(text || '').slice(0, 700);
@@ -175,10 +178,47 @@ async function synthesize(text, ch) {
       r = await fetch('https://api.openai.com/v1/audio/speech', { method: 'POST', signal: ctrl.signal, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key },
         body: JSON.stringify({ model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts', voice: voicePick(OAI, ch), input: text, instructions: style, response_format: 'mp3' }) });
     } else if (prov === 'elevenlabs') {
-      r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voicePick(ELV, ch)}?output_format=mp3_44100_128`, { method: 'POST', signal: ctrl.signal, headers: { 'content-type': 'application/json', 'xi-api-key': key },
+      /* use voices that exist in THIS account (free plans can't use every library voice), fall back to the built-in list */
+      const call = (vid) => fetch(`https://api.elevenlabs.io/v1/text-to-speech/${vid}?output_format=mp3_44100_128`, { method: 'POST', signal: ctrl.signal, headers: { 'content-type': 'application/json', 'xi-api-key': key },
         body: JSON.stringify({ text, model_id: process.env.ELEVENLABS_MODEL || 'eleven_turbo_v2_5', voice_settings: { stability: ch.anime ? 0.35 : 0.5, similarity_boost: 0.75, style: ch.anime ? 0.5 : 0.25, use_speaker_boost: true } }) });
+      let mine = [];
+      try {
+        if (!elvCache || elvCache.key !== key || Date.now() - elvCache.t > 600000) {
+          const vr = await fetch('https://api.elevenlabs.io/v1/voices', { signal: ctrl.signal, headers: { 'xi-api-key': key } });
+          elvCache = { key, t: Date.now(), list: vr.ok ? ((await vr.json()).voices || []).map((x) => ({ id: x.voice_id, g: String((x.labels && x.labels.gender) || '').toLowerCase(), cat: x.category })) : [] };
+        }
+        mine = elvCache.list;
+      } catch {}
+      const g = ch.voice && ch.voice.gender === 'm' ? 'male' : 'female';
+      const hs = [...String(ch.id || '') + String(ch.name || '')].reduce((a, c) => a + c.charCodeAt(0), 0);
+      const gp = mine.filter((x) => x.g === g), pool = gp.length ? gp : mine;
+      const first = pool.length ? pool[hs % pool.length].id : voicePick(ELV, ch);
+      r = await call(first);
+      if (!r.ok && [400, 402, 403, 404].includes(r.status)) for (const alt of [...pool.map((x) => x.id), voicePick(ELV, ch), ELV.f[0]].filter((x) => x !== first).slice(0, 3)) { r = await call(alt); if (r.ok) break; }
+    } else if (prov === 'voicestudio') {
+      /* VoiceStudio (open-source, runs on your own computer) speaks the OpenAI /v1/audio/speech format */
+      const base = ttsUrl(), hd = { 'content-type': 'application/json', ...(key ? { authorization: 'Bearer ' + key } : {}) };
+      let voice = ch.vsVoice || '';
+      if (!voice) {
+        try {
+          const vr = await fetch(base + '/v1/audio/voices', { signal: ctrl.signal, headers: key ? { authorization: 'Bearer ' + key } : {} });
+          if (vr.ok) {
+            const j = await vr.json(), arr = Array.isArray(j) ? j : j.voices || j.data || [];
+            const ids = arr.map((x) => (typeof x === 'string' ? x : x.id || x.voice_id || x.name)).filter(Boolean);
+            const want = ch.voice && ch.voice.gender === 'm' ? /male|man|boy|m\b/i : /female|woman|girl|f\b/i;
+            const pool = arr.filter((x) => typeof x === 'object' && want.test(String(x.gender || x.name || ''))).map((x) => x.id || x.voice_id || x.name);
+            const use = pool.length ? pool : ids;
+            if (use.length) voice = use[[...String(ch.id || '') + String(ch.name || '')].reduce((a, c) => a + c.charCodeAt(0), 0) % use.length];
+          }
+        } catch {}
+      }
+      r = await fetch(base + '/v1/audio/speech', { method: 'POST', signal: ctrl.signal, headers: hd, body: JSON.stringify({ model: 'tts-1', voice: voice || 'alloy', input: text, response_format: 'wav' }) });
     } else throw new Error('No voice service configured');
-    if (!r.ok) throw new Error(`${prov} ${r.status}: ${(await r.text()).slice(0, 160)}`);
+    if (!r.ok) {
+      const raw = (await r.text()).slice(0, 200);
+      const hint = r.status === 401 ? 'Key rejected, or it lacks the "Text to Speech" permission (create a key with that permission enabled).' : r.status === 402 ? 'Your plan does not allow this voice, or credits ran out.' : r.status === 429 ? 'Too many requests or monthly characters used up.' : '';
+      throw new Error(`${prov} ${r.status}. ${hint} ${raw}`.trim());
+    }
     return Buffer.from(await r.arrayBuffer());
   } finally { clearTimeout(to); }
 }
@@ -274,13 +314,14 @@ const server = http.createServer(async (req, res) => {
         if (u.pathname === '/api/key') {
           if (b.apiKey !== undefined) { conf.apiKey = String(b.apiKey || '').trim(); lastAiError = null; }
           if (b.model) conf.model = b.model;
-          if (b.ttsProvider !== undefined) conf.ttsProvider = ['openai', 'elevenlabs'].includes(b.ttsProvider) ? b.ttsProvider : '';
+          if (b.ttsProvider !== undefined) conf.ttsProvider = ['openai', 'elevenlabs', 'voicestudio'].includes(b.ttsProvider) ? b.ttsProvider : '';
           if (b.ttsKey !== undefined) conf.ttsKey = String(b.ttsKey || '').trim();
+          if (b.ttsUrl !== undefined) conf.ttsUrl = /^https?:\/\/[^\s]+$/i.test(String(b.ttsUrl).trim()) ? String(b.ttsUrl).trim() : '';
           writeJSON(CONF_FILE, conf); return send(res, 200, { ai: !!apiKey(), tts: ttsOn(), ttsProvider: ttsProvider() });
         }
         if (u.pathname === '/api/tts') {
           if (!ttsOn()) return send(res, 400, { error: 'Voice service not configured' });
-          try { const buf = await synthesize(b.text, b.character || {}); res.writeHead(200, { 'content-type': 'audio/mpeg', 'cache-control': 'no-store', 'content-length': buf.length }); return res.end(buf); }
+          try { const buf = await synthesize(b.text, b.character || {}); res.writeHead(200, { 'content-type': ttsType(), 'cache-control': 'no-store', 'content-length': buf.length }); return res.end(buf); }
           catch (e) { console.warn('[tts]', e.message); return send(res, 502, { error: e.message }); }
         }
       }

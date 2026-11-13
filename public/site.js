@@ -71,13 +71,8 @@ const ch = $('#charBtn'); if (ch) ch.innerHTML = 'Coach: <span id="charName">' +
   A.on('turn', ({ rep }) => {
     if (!window.__typeMode || !rep) return;
     const mine = $$('.m.you', tr).pop(); if (!mine) return;
-    const bits = [];
-    (rep.grammar || []).slice(0, 3).forEach((g) => bits.push(`<s>${esc(g.wrong)}</s> → <b>${esc(g.right)}</b>`));
-    (rep.natural || []).slice(0, 2).forEach((n) => bits.push(`<s>${esc(n.said)}</s> → <b>${esc(n.better)}</b>`));
-    (rep.pronunciation || []).slice(0, 1).forEach((p) => bits.push(`say <b>${esc(p.word)}</b> as “${esc(p.say)}”`));
-    const sc = rep.scores && rep.scores.overall;
-    const box = document.createElement('div'); box.className = 'inl ' + (bits.length ? 'has' : 'clean');
-    box.innerHTML = bits.length ? (rep.corrected ? `<div class="ok1">${esc(rep.corrected)}</div>` : '') + bits.map((b) => `<div>${b}</div>`).join('') + (sc != null ? `<small>Score ${sc}</small>` : '') : `<span>Looks good${sc != null ? ' · ' + sc : ''}</span>`;
+    const box = document.createElement('div'); box.className = 'inl ' + (rep.corrected ? 'has' : 'clean');
+    box.innerHTML = rep.corrected ? `<div class="ok1">${window.VocaDiff(rep.text, rep.corrected).fixed}</div>` : '<span>Looks good</span>';
     mine.appendChild(box); tr.scrollTop = 1e9;
   });
   let m = 'speak'; try { m = localStorage.getItem('voca.mode') || 'speak'; } catch {} set(m === 'type' ? 'type' : 'speak');
@@ -88,19 +83,19 @@ $('#aiPill').title = 'Shows whether the AI coach is connected';
 const P = $('#tab-progress'); if (!P.dataset.org) { P.dataset.org = 1;
   const grab = (s) => $(s, P), kids = [...P.children];
   const daily = grab('#daily'), xp = grab('.xpcard'), g3 = grab('.grid3'), three = grab('.three'), badges = grab('#badges').closest('.card'), heat = grab('#heat').closest('.card'), two = grab('.two');
-  const nb = grab('#notebook').closest('.card'), settings = grab('#saveSettings').closest('.card'), themes = $('#themeRow') ? $('#themeRow').closest('.card') : null;
+  const lb = grab('#learnbox'), nb = grab('#notebook').closest('.card'), settings = grab('#saveSettings').closest('.card'), themes = $('#themeRow') ? $('#themeRow').closest('.card') : null;
   const pane = (id, ...els) => { const d = document.createElement('div'); d.className = 'ppane'; d.id = 'pp-' + id; els.filter(Boolean).forEach((e) => d.appendChild(e)); return d; };
   const bar = document.createElement('div'); bar.className = 'psub'; bar.innerHTML = [['over', 'Overview'], ['trend', 'Trends'], ['badge', 'Badges'], ['notes', 'Notebook'], ['set', 'Settings']].map(([k, n], i) => `<button data-p="${k}" class="${i ? '' : 'on'}">${n}</button>`).join('');
   // settings groups
   const grp = (title, ids, open) => { const d = document.createElement('details'); d.className = 'sgrp'; if (open) d.open = true; d.innerHTML = `<summary>${title}</summary><div class="sbody"></div>`; ids.forEach((id) => { const el = $('#' + id, settings); const lab = el && (el.closest('label') || el.closest('.row') || el); if (lab) d.lastChild.appendChild(lab); }); return d; };
   const save = $('#saveSettings').closest('.row'); const h3 = settings.querySelector('h3'); if (h3) h3.textContent = 'Settings';
-  const groups = [grp('Practice', ['setGoal', 'setRemind', 'setLevel', 'setLang'], true), grp('Voice', ['setVoice', 'setRate', 'setSound', 'setTts', 'setTtsKey', 'ttsTest']), grp('AI coach', ['setKey'])];
+  const groups = [grp('Practice', ['setGoal', 'setRemind', 'setLevel', 'setLang'], true), grp('Voice', ['setVoice', 'setRate', 'setSound', 'setTts', 'setTtsUrl', 'setTtsKey', 'ttsTest']), grp('AI coach', ['setKey']), grp('Online helpers', ['setLT', 'setDict', 'setNeural', 'neuralRow'])];
   if (themes) { const d = document.createElement('details'); d.className = 'sgrp'; d.innerHTML = '<summary>Look &amp; theme</summary><div class="sbody"></div>'; const row = $('#themeRow'); row.previousElementSibling && row.previousElementSibling.remove(); d.lastChild.appendChild(row); groups.splice(1, 0, d); themes.remove(); }
   groups.forEach((g) => settings.insertBefore(g, save));
   const finalize = () => { const pg = $('#pgBox'); if (pg && !pg.closest('.sgrp')) { const d = document.createElement('details'); d.className = 'sgrp'; d.innerHTML = '<summary>Data &amp; hosting</summary><div class="sbody"></div>'; d.lastChild.appendChild(pg); settings.insertBefore(d, save); const h = pg.querySelector('h4'); if (h) h.remove(); } };
   addEventListener('load', () => setTimeout(finalize, 600)); setTimeout(finalize, 1500);
   P.innerHTML = ''; P.appendChild(bar);
-  const panes = [pane('over', daily, xp, g3), pane('trend', three, heat), pane('badge', badges), pane('notes', nb), pane('set', settings)];
+  const panes = [pane('over', daily, xp, g3), pane('trend', three, heat), pane('badge', badges), pane('notes', lb, nb), pane('set', settings)];
   if (two) two.remove(); panes.forEach((p) => P.appendChild(p)); panes[0].classList.add('on');
   [three, g3].forEach((e) => e && (e.style.marginTop = '0'));
   bar.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; $$('button', bar).forEach((x) => x.classList.toggle('on', x === b)); panes.forEach((p) => p.classList.toggle('on', p.id === 'pp-' + b.dataset.p)); };

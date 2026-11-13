@@ -23,7 +23,7 @@ function tone(f, t, l, vol = 0.1) {
 const SEQ = { start: [[660, 0, .09], [880, .09, .13]], stop: [[880, 0, .08], [587, .08, .13]], ok: [[784, 0, .1], [988, .1, .1], [1175, .2, .25]], level: [[523, 0, .12], [659, .12, .12], [784, .24, .12], [1047, .36, .45]], pop: [[1300, 0, .05]] };
 function sfx(n) {
   if (A.S.sound === false) return;
-  try { ac ??= new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); const t = ac.currentTime; SEQ[n].forEach(([f, d, l]) => tone(f, t + d, l)); } catch {}
+  try { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); const t = ac.currentTime; SEQ[n].forEach(([f, d, l]) => tone(f, t + d, l)); } catch {}
 }
 
 /* ---------- confetti ---------- */
@@ -79,9 +79,10 @@ requestAnimationFrame(frame);
 /* ---------- equalizer + status effects ---------- */
 const eq = $('#eq');
 for (let i = 0; i < 30; i++) { const b = document.createElement('i'); b.style.animationDelay = (-Math.random() * 1).toFixed(2) + 's'; b.style.animationDuration = (0.55 + Math.random() * .7).toFixed(2) + 's'; eq.appendChild(b); }
+A.on('micReady', () => sfx('start'));
 A.on('status', ({ s, prev }) => {
   $('#sub').classList.toggle('live', s === 'listening' || s === 'speaking');
-  if (s === 'listening') sfx('start'); else if (prev === 'listening' && s === 'thinking') sfx('stop');
+  if (s === 'listening') {} else if (prev === 'listening' && s === 'thinking') sfx('stop');
 });
 
 /* ---------- XP & levels ---------- */
@@ -199,9 +200,9 @@ function lineChart(vals, color) {
   const path = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
   const id = 'g' + Math.random().toString(36).slice(2, 7);
   return `<svg viewBox="0 0 ${w} ${h + 14}"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".4"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
-  <path d="${path} L${pts.at(-1)[0]} ${h} L${pts[0][0]} ${h}Z" fill="url(#${id})"/><path class="ln" d="${path}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="${path} L${pts[pts.length - 1][0]} ${h} L${pts[0][0]} ${h}Z" fill="url(#${id})"/><path class="ln" d="${path}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
   ${pts.map((p) => `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="${color}"/>`).join('')}
-  <text x="${pad}" y="${h + 12}" fill="currentColor" opacity=".55" font-size="10">${mn}</text><text x="${w - pad}" y="${h + 12}" fill="currentColor" opacity=".55" font-size="10" text-anchor="end">now ${vals.at(-1)}</text></svg>`;
+  <text x="${pad}" y="${h + 12}" fill="currentColor" opacity=".55" font-size="10">${mn}</text><text x="${w - pad}" y="${h + 12}" fill="currentColor" opacity=".55" font-size="10" text-anchor="end">now ${vals[vals.length - 1]}</text></svg>`;
 }
 function barChart(days, goal) {
   const w = 300, h = 100, n = days.length, bw = (w - 20) / n, mx = Math.max(goal, ...days.map((d) => d.sec / 60), 1);

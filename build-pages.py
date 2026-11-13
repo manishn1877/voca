@@ -52,10 +52,10 @@ function loadConf() {
   if (keyMode === 'tab') { try { sec = JSON.parse(ss.get('ava.sec') || '{}'); } catch {} }
   else if (keyMode === 'device') sec = { apiKey: pub.apiKey, ttsKey: pub.ttsKey };
   else if (keyMode === 'pass') locked = !!ls.get('ava.static.vault') && passphrase === null;
-  conf = { model: pub.model, ttsProvider: pub.ttsProvider, ...sec };
+  conf = { model: pub.model, ttsProvider: pub.ttsProvider, ttsUrl: pub.ttsUrl, ...sec };
 }
 async function persistConf() {
-  const pub = { model: conf.model, ttsProvider: conf.ttsProvider }, sec = { apiKey: conf.apiKey || '', ttsKey: conf.ttsKey || '' };
+  const pub = { model: conf.model, ttsProvider: conf.ttsProvider, ttsUrl: conf.ttsUrl }, sec = { apiKey: conf.apiKey || '', ttsKey: conf.ttsKey || '' };
   if (keyMode === 'device') Object.assign(pub, sec);
   else if (keyMode === 'tab') ss.set('ava.sec', JSON.stringify(sec));
   else if (keyMode === 'pass' && passphrase) await sealVault(passphrase, sec);
@@ -79,7 +79,9 @@ const apiKey = () => conf.apiKey || '';
 const model = () => conf.model || 'claude-sonnet-5-5';
 const ttsProvider = () => conf.ttsProvider || '';
 const ttsKey = () => conf.ttsKey || '';
-const ttsOn = () => !!(ttsProvider() && ttsKey());
+const ttsUrl = () => String(conf.ttsUrl || 'http://localhost:3900').replace(/\/+$/, '');
+const ttsOn = () => ttsProvider() === 'voicestudio' || !!(ttsProvider() && ttsKey());
+const ttsType = () => (ttsProvider() === 'voicestudio' ? 'audio/wav' : 'audio/mpeg');
 
 function friendly(e) {
   const m = String((e && e.message) || e);
@@ -127,7 +129,7 @@ async function localApi(path, url, init) {
   if (init && init.body) { try { b = JSON.parse(typeof init.body === 'string' ? init.body : await init.body.text()); } catch {} }
   try {
     if (method === 'GET') {
-      if (path === '/api/config') return J({ ai: !!apiKey(), model: model(), aiError: lastAiError, tts: ttsOn(), ttsProvider: ttsProvider(), static: true, keyMode, locked });
+      if (path === '/api/config') return J({ ai: !!apiKey(), model: model(), aiError: lastAiError, tts: ttsOn(), ttsProvider: ttsProvider(), ttsUrl: ttsUrl(), static: true, keyMode, locked });
       if (path === '/api/ping') { const t = await askClaude('Reply with the single word OK.', 'ping', 10); return J({ ok: t != null, error: t == null ? (apiKey() ? lastAiError : (locked ? 'Keys are locked — unlock first.' : 'No Anthropic key saved yet.')) : null }); }
       if (path === '/api/characters') return J({ characters: CH.PRESETS });
       if (path === '/api/topics') { const o = []; for (let i = 0; i < 6; i++) o.push(randomTopic(o).topic); return J({ topics: o }); }
@@ -147,13 +149,14 @@ async function localApi(path, url, init) {
         if (locked) return J({ error: 'Keys are locked' }, 423);
         if (b.apiKey !== undefined) { conf.apiKey = String(b.apiKey || '').trim(); lastAiError = null; }
         if (b.model) conf.model = b.model;
-        if (b.ttsProvider !== undefined) conf.ttsProvider = ['openai', 'elevenlabs'].includes(b.ttsProvider) ? b.ttsProvider : '';
+        if (b.ttsProvider !== undefined) conf.ttsProvider = ['openai', 'elevenlabs', 'voicestudio'].includes(b.ttsProvider) ? b.ttsProvider : '';
         if (b.ttsKey !== undefined) conf.ttsKey = String(b.ttsKey || '').trim();
-        await persistConf(); return J({ ai: !!apiKey(), tts: ttsOn(), ttsProvider: ttsProvider() });
+        if (b.ttsUrl !== undefined) conf.ttsUrl = /^https?:\/\/[^\s]+$/i.test(String(b.ttsUrl).trim()) ? String(b.ttsUrl).trim() : '';
+        await persistConf(); return J({ ai: !!apiKey(), tts: ttsOn(), ttsProvider: ttsProvider(), ttsUrl: ttsUrl() });
       }
       if (path === '/api/tts') {
         if (!ttsOn()) return J({ error: 'Voice service not configured' }, 400);
-        try { const buf = await synthesize(b.text, b.character || {}); return new Response(buf, { status: 200, headers: { 'content-type': 'audio/mpeg' } }); }
+        try { const buf = await synthesize(b.text, b.character || {}); return new Response(buf, { status: 200, headers: { 'content-type': ttsType() } }); }
         catch (e) { return J({ error: String(e.message || e) }, 502); }
       }
     }
